@@ -1,6 +1,5 @@
 const express = require("express");
 const multer = require("multer");
-const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -13,7 +12,6 @@ const execFileAsync = util.promisify(execFile);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
