@@ -5,6 +5,7 @@ const fs = require("fs")
 const fsp = require("fs/promises")
 const os = require("os")
 const path = require("path")
+const axios = require("axios")
 const FormData = require("form-data")
 
 ffmpeg.setFfmpegPath("/usr/bin/ffmpeg")
@@ -16,9 +17,9 @@ app.use(express.static("public"))
 
 const tmp = name => path.join(os.tmpdir(), Date.now() + "-" + name)
 
-// ----------------------
-// STEP 1: TRIM VIDEO
-// ----------------------
+// ------------------
+// TRIM
+// ------------------
 function trimVideo(input, output, start, duration){
   return new Promise((res, rej)=>{
     ffmpeg(input)
@@ -31,54 +32,56 @@ function trimVideo(input, output, start, duration){
   })
 }
 
-// ----------------------
-// STEP 2: ELEVENLABS
-// ----------------------
-async function isolateAudio(input, filename, key){
+// ------------------
+// ELEVENLABS FIXED
+// ------------------
+async function isolateAudio(inputPath, filename, key){
   const form = new FormData()
 
-  form.append("file", fs.createReadStream(input), {
+  form.append("file", fs.createReadStream(inputPath), {
     filename: filename || "input.mp4",
     contentType: "video/mp4"
   })
 
-  const res = await fetch("https://api.elevenlabs.io/v1/audio-isolation", {
-    method: "POST",
-    headers: {
-      "xi-api-key": key,
-      ...form.getHeaders()
-    },
-    body: form
-  })
+  try {
+    const response = await axios.post(
+      "https://api.elevenlabs.io/v1/audio-isolation",
+      form,
+      {
+        headers: {
+          "xi-api-key": key,
+          ...form.getHeaders()
+        },
+        responseType: "arraybuffer"
+      }
+    )
 
-  if(!res.ok){
-    throw new Error("ElevenLabs failed: " + await res.text())
+    const out = tmp("audio.mp3")
+    await fsp.writeFile(out, response.data)
+    return out
+
+  } catch (err) {
+    if (err.response) {
+      throw new Error("ElevenLabs failed: " + JSON.stringify(err.response.data))
+    }
+    throw err
   }
-
-  const out = tmp("audio.mp3")
-  const buffer = await res.arrayBuffer()
-  await fsp.writeFile(out, Buffer.from(buffer))
-  return out
 }
 
-// ----------------------
-// STEP 3: FAL UPLOAD + POLL
-// ----------------------
-async function falUpscale(input, filename, key){
+// ------------------
+// FAL UPSCALE
+// ------------------
+async function falUpscale(input, key){
 
-  // upload file
   const uploadRes = await fetch("https://fal.run/storage/upload", {
     method: "POST",
-    headers: {
-      "Authorization": `Key ${key}`
-    },
+    headers: { "Authorization": `Key ${key}` },
     body: fs.createReadStream(input)
   })
 
   const uploadData = await uploadRes.json()
   const video_url = uploadData.url
 
-  // submit job
   const submit = await fetch("https://fal.run/fal-ai/video-upscale", {
     method: "POST",
     headers: {
@@ -91,7 +94,6 @@ async function falUpscale(input, filename, key){
   const job = await submit.json()
   const id = job.request_id
 
-  // poll
   while(true){
     await new Promise(r=>setTimeout(r,4000))
 
@@ -103,11 +105,12 @@ async function falUpscale(input, filename, key){
 
     if(status.status==="COMPLETED"){
       const url = status.output.video.url
-
       const out = tmp("video.mp4")
+
       const res = await fetch(url)
       const buf = await res.arrayBuffer()
       await fsp.writeFile(out, Buffer.from(buf))
+
       return out
     }
 
@@ -117,9 +120,9 @@ async function falUpscale(input, filename, key){
   }
 }
 
-// ----------------------
-// STEP 4: MERGE
-// ----------------------
+// ------------------
+// MERGE
+// ------------------
 function merge(video, audio, out){
   return new Promise((res,rej)=>{
     ffmpeg()
@@ -138,10 +141,9 @@ function merge(video, audio, out){
   })
 }
 
-// ----------------------
-// ROUTES
-// ----------------------
-
+// ------------------
+// FAST ROUTE
+// ------------------
 app.post("/api/enhance-fast", upload.single("media"), async(req,res)=>{
   const input=req.file.path
   const output=tmp("fast.mp4")
@@ -153,6 +155,9 @@ app.post("/api/enhance-fast", upload.single("media"), async(req,res)=>{
   res.sendFile(output)
 })
 
+// ------------------
+// AI ROUTE
+// ------------------
 app.post("/api/enhance-ai", upload.single("media"), async(req,res)=>{
   let input=req.file.path
   let trimmed=tmp("trim.mp4")
@@ -164,16 +169,13 @@ app.post("/api/enhance-ai", upload.single("media"), async(req,res)=>{
     const eleven=req.body.elevenKey
     const fal=req.body.falKey
 
-    if(!eleven || !fal) throw new Error("Missing keys")
+    if(!eleven || !fal) throw new Error("Missing API keys")
 
-    // trim
     await trimVideo(input, trimmed, 0, 15)
 
-    // AI steps
     audio = await isolateAudio(trimmed, req.file.originalname, eleven)
-    video = await falUpscale(trimmed, req.file.originalname, fal)
+    video = await falUpscale(trimmed, fal)
 
-    // merge
     await merge(video, audio, output)
 
     res.sendFile(output)
@@ -183,7 +185,7 @@ app.post("/api/enhance-ai", upload.single("media"), async(req,res)=>{
   }
 })
 
-// health
+// ------------------
 app.get("/healthz",(req,res)=>res.json({ok:true}))
 
 app.listen(process.env.PORT||3000,"0.0.0.0")
