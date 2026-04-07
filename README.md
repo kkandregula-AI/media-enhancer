@@ -1,28 +1,39 @@
-# Media Enhancer Pro — Railway Ready
 
-This version is prepared for Railway using Docker and system FFmpeg.
+# Media Enhancer Pro — Railway Production AI Build
 
-## Files
-- Dockerfile
-- server.js
-- package.json
-- public/index.html
+This package keeps your **Fast Enhance** path and adds a real **AI Enhance** path.
 
-## Deploy on Railway
-1. Create a new GitHub repo
-2. Upload all files from this folder
-3. Push to GitHub
-4. In Railway, click New Project
-5. Choose Deploy from GitHub Repo
-6. Select this repo
-7. Railway will build from the Dockerfile
-8. After deploy, open /healthz to confirm the backend is live
+## Included
+- Fast Enhance: FFmpeg-based trim, cleanup, scaling, loudness shaping, MP4 export
+- AI Enhance:
+  - ElevenLabs Voice Isolation
+  - fal video upscaling
+  - FFmpeg mux of AI-upscaled video + isolated audio
+- Premium UI
+- PWA manifest + service worker
+- Premium app icons
+
+## Dynamic keys
+AI mode asks the user for:
+- ElevenLabs API key
+- fal API key
+
+These keys are:
+- not stored on the server
+- optional to remember in the browser only
+
+## Railway deployment
+1. Push this repo to GitHub
+2. In Railway: New Project → Deploy from GitHub Repo
+3. Railway detects the `Dockerfile`
+4. Generate a public domain in Railway settings if needed
 
 ## First test
-- short clip
-- 1080p
-- Balanced
+- Use a short clip
+- Start with 1080p
+- Use AI scale factor 2× first
 
 ## Notes
-- Railway docs support deploying Express apps from GitHub and also support Docker-based deployments.
-- This app uses Docker so FFmpeg is installed at the OS level.
+- The default fal model is `clarityai/crystal-video-upscaler`
+- If your fal account uses another compatible video upscaler, change the model ID in the UI
+- AI requests depend on your own ElevenLabs and fal account access, quotas, and billing
