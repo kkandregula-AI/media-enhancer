@@ -1,334 +1,189 @@
+const express = require("express")
+const multer = require("multer")
+const ffmpeg = require("fluent-ffmpeg")
+const fs = require("fs")
+const fsp = require("fs/promises")
+const os = require("os")
+const path = require("path")
+const FormData = require("form-data")
 
-const express = require("express");
-const path = require("path");
-const os = require("os");
-const fs = require("fs");
-const fsp = require("fs/promises");
-const { File } = require("node:buffer");
-const multer = require("multer");
-const ffmpeg = require("fluent-ffmpeg");
-const FormData = require("form-data");
+ffmpeg.setFfmpegPath("/usr/bin/ffmpeg")
 
-ffmpeg.setFfmpegPath("/usr/bin/ffmpeg");
-ffmpeg.setFfprobePath("/usr/bin/ffprobe");
+const app = express()
+const upload = multer({ dest: os.tmpdir() })
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const upload = multer({
-  dest: os.tmpdir(),
-  limits: { fileSize: 500 * 1024 * 1024 }
-});
+app.use(express.static("public"))
 
-app.use(express.static(path.join(__dirname, "public")));
+const tmp = name => path.join(os.tmpdir(), Date.now() + "-" + name)
 
-function cleanup(paths){
-  for(const p of paths){
-    if(!p) continue;
-    try { if(fs.existsSync(p)) fs.unlinkSync(p); } catch {}
-  }
+// ----------------------
+// STEP 1: TRIM VIDEO
+// ----------------------
+function trimVideo(input, output, start, duration){
+  return new Promise((res, rej)=>{
+    ffmpeg(input)
+      .setStartTime(start)
+      .duration(duration)
+      .outputOptions(["-preset ultrafast"])
+      .save(output)
+      .on("end", res)
+      .on("error", rej)
+  })
 }
 
-function parseNumber(value, fallback = 0){
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
+// ----------------------
+// STEP 2: ELEVENLABS
+// ----------------------
+async function isolateAudio(input, filename, key){
+  const form = new FormData()
 
-function uniqueTemp(name){
-  return path.join(os.tmpdir(), `${Date.now()}-${Math.random().toString(36).slice(2)}-${name}`);
-}
-
-async function streamToFile(response, filePath){
-  const arrayBuffer = await response.arrayBuffer();
-  await fsp.writeFile(filePath, Buffer.from(arrayBuffer));
-}
-
-function probeDuration(filePath){
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, data) => {
-      if(err) return reject(err);
-      resolve(Number(data?.format?.duration || 0));
-    });
-  });
-}
-
-function runFfmpeg({ inputPath, outputPath, trimStart = 0, clipDuration = 0, videoFilter, audioFilter, crf = 23 }){
-  return new Promise((resolve, reject) => {
-    let stderrLines = [];
-    let cmd = ffmpeg(inputPath)
-      .videoCodec("libx264")
-      .audioCodec("aac")
-      .outputOptions([
-        "-movflags +faststart",
-        "-pix_fmt yuv420p",
-        "-preset ultrafast",
-        `-crf ${crf}`
-      ])
-      .format("mp4")
-      .on("stderr", line => {
-        stderrLines.push(line);
-        if(stderrLines.length > 40) stderrLines.shift();
-      })
-      .on("end", resolve)
-      .on("error", err => {
-        err.ffmpegStderr = stderrLines.join(" | ");
-        reject(err);
-      });
-
-    if(videoFilter) cmd = cmd.videoFilters(videoFilter);
-    if(audioFilter) cmd = cmd.audioFilters(audioFilter);
-    if(trimStart > 0) cmd = cmd.setStartTime(trimStart);
-    if(clipDuration > 0) cmd = cmd.duration(clipDuration);
-
-    cmd.save(outputPath);
-  });
-}
-
-function pickVideoFilter({ preset, resolution }){
-  const h = Number(resolution) || 1080;
-  const scale = `scale=-2:${h}:flags=bicubic`;
-  if(preset === "clarity") return `${scale},eq=contrast=1.05:brightness=0.01:saturation=1.04,unsharp=3:3:0.4:3:3:0.0`;
-  if(preset === "social") return `${scale},eq=contrast=1.07:brightness=0.02:saturation=1.06`;
-  if(preset === "cinematic") return `${scale},hqdn3d=0.6:0.6:2:2,eq=contrast=1.03:brightness=0.01:saturation=1.02`;
-  return `${scale},eq=contrast=1.03:brightness=0.01:saturation=1.02`;
-}
-
-function pickAudioFilter({ audioPreset, audioGain }){
-  const gain = Number(audioGain) || 0;
-  const base = [`volume=${gain}dB`];
-  if(audioPreset === "voice"){
-    base.push("highpass=f=100", "lowpass=f=8000", "acompressor=threshold=-18dB:ratio=3:attack=20:release=200");
-  }else if(audioPreset === "loud"){
-    base.push("loudnorm=I=-14:LRA=11:TP=-1.5");
-  }else{
-    base.push("loudnorm=I=-16:LRA=11:TP=-1.5");
-  }
-  return base.join(",");
-}
-
-function runMux(videoPath, audioPath, outputPath){
-  return new Promise((resolve, reject) => {
-    let stderrLines = [];
-    ffmpeg()
-      .input(videoPath)
-      .input(audioPath)
-      .outputOptions([
-        "-map 0:v:0",
-        "-map 1:a:0",
-        "-c:v copy",
-        "-c:a aac",
-        "-shortest",
-        "-movflags +faststart"
-      ])
-      .on("stderr", line => {
-        stderrLines.push(line);
-        if(stderrLines.length > 40) stderrLines.shift();
-      })
-      .on("end", resolve)
-      .on("error", err => {
-        err.ffmpegStderr = stderrLines.join(" | ");
-        reject(err);
-      })
-      .save(outputPath);
-  });
-}
-
-async function buildTrimInfo(req, inputPath){
-  const trimStart = Math.max(0, parseNumber(req.body.trimStart, 0));
-  const trimEnd = Math.max(0, parseNumber(req.body.trimEnd, 0));
-  const totalDuration = await probeDuration(inputPath);
-  if(!totalDuration || totalDuration <= 0){
-    throw new Error("Could not read video duration.");
-  }
-  const endAt = Math.max(trimStart, totalDuration - trimEnd);
-  const clipDuration = Math.max(0, endAt - trimStart);
-  if(clipDuration <= 0.1){
-    const err = new Error("Trim values leave no usable video.");
-    err.statusCode = 400;
-    throw err;
-  }
-  return { trimStart, clipDuration };
-}
-
-async function runElevenLabsIsolation(inputPath, originalName, elevenKey){
-  const form = new FormData();
-  form.append("audio", fs.createReadStream(inputPath), {
-    filename: originalName || "input.mp4",
-    contentType: "application/octet-stream"
-  });
-  form.append("file_format", "other");
+  form.append("file", fs.createReadStream(input), {
+    filename: filename || "input.mp4",
+    contentType: "video/mp4"
+  })
 
   const res = await fetch("https://api.elevenlabs.io/v1/audio-isolation", {
     method: "POST",
     headers: {
-      "xi-api-key": elevenKey,
+      "xi-api-key": key,
       ...form.getHeaders()
     },
     body: form
-  });
+  })
 
   if(!res.ok){
-    const raw = await res.text();
-    throw new Error(`ElevenLabs audio isolation failed (${res.status}): ${raw || "Unknown error"}`);
+    throw new Error("ElevenLabs failed: " + await res.text())
   }
 
-  const contentType = res.headers.get("content-type") || "audio/mpeg";
-  let ext = ".mp3";
-  if(contentType.includes("wav")) ext = ".wav";
-  if(contentType.includes("ogg")) ext = ".ogg";
-  const isolatedAudioPath = uniqueTemp(`isolated${ext}`);
-  await streamToFile(res, isolatedAudioPath);
-  return isolatedAudioPath;
+  const out = tmp("audio.mp3")
+  const buffer = await res.arrayBuffer()
+  await fsp.writeFile(out, Buffer.from(buffer))
+  return out
 }
 
-async function runFalUpscale(inputPath, originalName, falKey, modelId, scaleFactor){
-  const { fal } = await import("@fal-ai/client");
-  fal.config({ credentials: falKey });
+// ----------------------
+// STEP 3: FAL UPLOAD + POLL
+// ----------------------
+async function falUpscale(input, filename, key){
 
-  const data = await fsp.readFile(inputPath);
-  const file = new File([data], originalName || "input.mp4", { type: "video/mp4" });
+  // upload file
+  const uploadRes = await fetch("https://fal.run/storage/upload", {
+    method: "POST",
+    headers: {
+      "Authorization": `Key ${key}`
+    },
+    body: fs.createReadStream(input)
+  })
 
-  const uploadedUrl = await fal.storage.upload(file);
-  const submit = await fal.queue.submit(modelId, {
-    input: {
-      video_url: uploadedUrl,
-      scale_factor: Number(scaleFactor) || 2
-    }
-  });
+  const uploadData = await uploadRes.json()
+  const video_url = uploadData.url
 
-  const requestId = submit.request_id || submit.requestId;
-  if(!requestId){
-    throw new Error("fal queue submit did not return a request ID.");
-  }
+  // submit job
+  const submit = await fetch("https://fal.run/fal-ai/video-upscale", {
+    method: "POST",
+    headers: {
+      "Authorization": `Key ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ video_url })
+  })
 
-  const startedAt = Date.now();
-  const maxWaitMs = 1000 * 60 * 30;
+  const job = await submit.json()
+  const id = job.request_id
 
+  // poll
   while(true){
-    const status = await fal.queue.status(modelId, { requestId, logs: true });
-    const st = status.status || status.state || "";
-    if(st === "COMPLETED"){
-      const result = await fal.queue.result(modelId, { requestId });
-      const videoUrl = result?.data?.video?.url || result?.video?.url || result?.data?.url || result?.url;
-      if(!videoUrl){
-        throw new Error("fal completed, but no output video URL was returned.");
-      }
-      const outPath = uniqueTemp("fal-video.mp4");
-      const res = await fetch(videoUrl);
-      if(!res.ok){
-        throw new Error(`Could not download fal output (${res.status}).`);
-      }
-      await streamToFile(res, outPath);
-      return outPath;
+    await new Promise(r=>setTimeout(r,4000))
+
+    const statusRes = await fetch(`https://fal.run/fal-ai/video-upscale/requests/${id}`,{
+      headers:{ "Authorization": `Key ${key}` }
+    })
+
+    const status = await statusRes.json()
+
+    if(status.status==="COMPLETED"){
+      const url = status.output.video.url
+
+      const out = tmp("video.mp4")
+      const res = await fetch(url)
+      const buf = await res.arrayBuffer()
+      await fsp.writeFile(out, Buffer.from(buf))
+      return out
     }
-    if(st === "FAILED" || st === "CANCELLED"){
-      throw new Error(`fal job ended with status ${st}.`);
+
+    if(status.status==="FAILED"){
+      throw new Error("fal failed")
     }
-    if(Date.now() - startedAt > maxWaitMs){
-      throw new Error("fal job timed out while waiting for completion.");
-    }
-    await new Promise(r => setTimeout(r, 5000));
   }
 }
 
-app.post("/api/enhance-fast", upload.single("media"), async (req, res) => {
-  let inputPath = req.file?.path || null;
-  let outputPath = null;
+// ----------------------
+// STEP 4: MERGE
+// ----------------------
+function merge(video, audio, out){
+  return new Promise((res,rej)=>{
+    ffmpeg()
+      .input(video)
+      .input(audio)
+      .outputOptions([
+        "-map 0:v",
+        "-map 1:a",
+        "-c:v copy",
+        "-c:a aac",
+        "-shortest"
+      ])
+      .save(out)
+      .on("end", res)
+      .on("error", rej)
+  })
+}
+
+// ----------------------
+// ROUTES
+// ----------------------
+
+app.post("/api/enhance-fast", upload.single("media"), async(req,res)=>{
+  const input=req.file.path
+  const output=tmp("fast.mp4")
+
+  await new Promise((resolve,reject)=>{
+    ffmpeg(input).save(output).on("end",resolve).on("error",reject)
+  })
+
+  res.sendFile(output)
+})
+
+app.post("/api/enhance-ai", upload.single("media"), async(req,res)=>{
+  let input=req.file.path
+  let trimmed=tmp("trim.mp4")
+  let audio=null
+  let video=null
+  let output=tmp("final.mp4")
 
   try{
-    if(!req.file) return res.status(400).json({ error: "No media file uploaded." });
+    const eleven=req.body.elevenKey
+    const fal=req.body.falKey
 
-    const { trimStart, clipDuration } = await buildTrimInfo(req, inputPath);
-    outputPath = uniqueTemp("fast-output.mp4");
+    if(!eleven || !fal) throw new Error("Missing keys")
 
-    await runFfmpeg({
-      inputPath,
-      outputPath,
-      trimStart,
-      clipDuration,
-      videoFilter: pickVideoFilter({ preset: req.body.preset, resolution: req.body.resolution }),
-      audioFilter: pickAudioFilter({ audioPreset: req.body.audioPreset, audioGain: req.body.audioGain }),
-      crf: Math.min(32, Math.max(18, parseNumber(req.body.crf, 23)))
-    });
+    // trim
+    await trimVideo(input, trimmed, 0, 15)
 
-    const stat = fs.statSync(outputPath);
-    if(!stat.size) throw new Error("Processed file is empty.");
+    // AI steps
+    audio = await isolateAudio(trimmed, req.file.originalname, eleven)
+    video = await falUpscale(trimmed, req.file.originalname, fal)
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="fast-enhanced.mp4"`);
-    const stream = fs.createReadStream(outputPath);
-    stream.pipe(res);
-    stream.on("close", () => cleanup([inputPath, outputPath]));
-    stream.on("error", () => cleanup([inputPath, outputPath]));
-  }catch(error){
-    cleanup([inputPath, outputPath]);
-    res.status(error.statusCode || 500).json({
-      error: error.message || "Fast enhancement failed.",
-      stderr: error.ffmpegStderr || ""
-    });
+    // merge
+    await merge(video, audio, output)
+
+    res.sendFile(output)
+
+  }catch(e){
+    res.status(500).send(e.message)
   }
-});
+})
 
-app.post("/api/enhance-ai", upload.single("media"), async (req, res) => {
-  let inputPath = req.file?.path || null;
-  let aiVideoPath = null;
-  let isolatedAudioPath = null;
-  let outputPath = null;
+// health
+app.get("/healthz",(req,res)=>res.json({ok:true}))
 
-  try{
-    if(!req.file) return res.status(400).json({ error: "No media file uploaded." });
-
-    const elevenKey = (req.body.elevenKey || "").trim();
-    const falKey = (req.body.falKey || "").trim();
-    const modelId = (req.body.falModelId || "clarityai/crystal-video-upscaler").trim();
-    const scaleFactor = req.body.scaleFactor || "2";
-
-    if(!elevenKey || !falKey){
-      return res.status(400).json({ error: "Both ElevenLabs and fal API keys are required for AI Enhance." });
-    }
-
-    const { trimStart, clipDuration } = await buildTrimInfo(req, inputPath);
-
-    // Trim once before sending to AI tools so the paid processing scope matches the user's clip.
-    const trimmedInputPath = uniqueTemp("trimmed-input.mp4");
-    await runFfmpeg({
-      inputPath,
-      outputPath: trimmedInputPath,
-      trimStart,
-      clipDuration,
-      videoFilter: null,
-      audioFilter: null,
-      crf: 20
-    });
-    cleanup([inputPath]);
-    inputPath = trimmedInputPath;
-
-    isolatedAudioPath = await runElevenLabsIsolation(inputPath, req.file.originalname, elevenKey);
-    aiVideoPath = await runFalUpscale(inputPath, req.file.originalname, falKey, modelId, scaleFactor);
-
-    outputPath = uniqueTemp("ai-output.mp4");
-    await runMux(aiVideoPath, isolatedAudioPath, outputPath);
-
-    const stat = fs.statSync(outputPath);
-    if(!stat.size) throw new Error("AI output file is empty.");
-
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename="ai-enhanced.mp4"`);
-    const stream = fs.createReadStream(outputPath);
-    stream.pipe(res);
-    stream.on("close", () => cleanup([inputPath, aiVideoPath, isolatedAudioPath, outputPath]));
-    stream.on("error", () => cleanup([inputPath, aiVideoPath, isolatedAudioPath, outputPath]));
-  }catch(error){
-    cleanup([inputPath, aiVideoPath, isolatedAudioPath, outputPath]);
-    res.status(error.statusCode || 500).json({
-      error: error.message || "AI enhancement failed.",
-      details: "Check that your ElevenLabs key, fal key, and selected fal model are valid and enabled on your account.",
-      stderr: error.ffmpegStderr || ""
-    });
-  }
-});
-
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Media Enhancer Pro listening on port ${PORT}`);
-});
+app.listen(process.env.PORT||3000,"0.0.0.0")
