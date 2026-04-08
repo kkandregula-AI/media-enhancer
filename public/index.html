@@ -6,27 +6,31 @@
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   />
-  <title>AI Video Enhancer</title>
+  <title>AI Media Enhancer</title>
   <meta
     name="description"
-    content="Enhance videos with Fast Mode or AI Mode. Mobile-friendly PWA-style interface."
+    content="Enhance audio and video with premium fast mode, quality controls, and optional AI pipeline."
   />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+
   <style>
     :root {
-      --bg: #06111f;
-      --bg-2: #0a1730;
-      --panel: rgba(8, 18, 40, 0.9);
-      --panel-2: rgba(12, 28, 64, 0.95);
-      --text: #eef4ff;
-      --muted: #b9c8ea;
-      --line: rgba(126, 160, 255, 0.2);
-      --accent: #7ea0ff;
-      --accent-2: #9b7eff;
-      --success: #69d59a;
-      --warn: #ffd36b;
-      --danger: #ff8b8b;
-      --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-      --radius: 22px;
+      --bg: #07111f;
+      --bg2: #0c1930;
+      --panel: rgba(12, 22, 42, 0.86);
+      --panel-strong: rgba(13, 25, 48, 0.95);
+      --text: #eef3ff;
+      --muted: #aebddb;
+      --line: rgba(143, 175, 255, 0.16);
+      --accent: #88aaff;
+      --accent2: #b38cff;
+      --success: #6be3a8;
+      --warn: #ffd36e;
+      --danger: #ff8f8f;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+      --radius: 24px;
     }
 
     * {
@@ -34,15 +38,14 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       min-height: 100%;
       background:
-        radial-gradient(circle at top left, rgba(126,160,255,0.18), transparent 30%),
-        radial-gradient(circle at top right, rgba(155,126,255,0.12), transparent 24%),
-        linear-gradient(180deg, var(--bg-2), var(--bg));
+        radial-gradient(circle at top left, rgba(136,170,255,0.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(179,140,255,0.10), transparent 26%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow-x: hidden;
@@ -54,58 +57,77 @@
 
     .app {
       width: 100%;
-      max-width: 860px;
+      max-width: 980px;
       margin: 0 auto;
       padding: 18px 14px 28px;
     }
 
     .hero {
-      background: linear-gradient(180deg, rgba(15,33,74,0.95), rgba(8,18,40,0.92));
+      position: relative;
       border: 1px solid var(--line);
-      border-radius: 28px;
-      padding: 22px 18px;
+      border-radius: 30px;
+      padding: 24px 18px;
+      background: linear-gradient(180deg, rgba(18,34,70,0.95), rgba(10,20,38,0.92));
       box-shadow: var(--shadow);
       overflow: hidden;
-      position: relative;
     }
 
     .hero::after {
       content: "";
       position: absolute;
-      inset: auto -20% -40% auto;
-      width: 240px;
-      height: 240px;
-      background: radial-gradient(circle, rgba(126,160,255,0.16), transparent 65%);
+      right: -80px;
+      top: -70px;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(136,170,255,0.20), transparent 65%);
       pointer-events: none;
+      filter: blur(10px);
     }
 
-    .badge {
+    .pill {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       padding: 8px 12px;
       border-radius: 999px;
-      border: 1px solid rgba(126,160,255,0.24);
-      background: rgba(126,160,255,0.08);
-      color: var(--muted);
       font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.2px;
+      font-weight: 700;
+      color: #d8e4ff;
+      background: rgba(136,170,255,0.10);
+      border: 1px solid rgba(136,170,255,0.18);
     }
 
     h1 {
-      margin: 14px 0 8px;
-      font-size: clamp(28px, 7vw, 42px);
-      line-height: 1.05;
-      letter-spacing: -0.02em;
+      margin: 14px 0 10px;
+      font-size: clamp(30px, 7vw, 46px);
+      line-height: 1.04;
+      letter-spacing: -0.03em;
     }
 
     .hero p {
       margin: 0;
+      max-width: 760px;
       color: var(--muted);
       font-size: 15px;
-      line-height: 1.6;
-      max-width: 680px;
+      line-height: 1.65;
+    }
+
+    .top-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .ghost-btn, .install-btn {
+      border: 1px solid var(--line);
+      background: rgba(136,170,255,0.10);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
     }
 
     .grid {
@@ -116,67 +138,65 @@
     }
 
     .panel {
-      background: linear-gradient(180deg, rgba(10,23,48,0.98), rgba(6,17,31,0.98));
-      border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12,23,44,0.96), rgba(9,18,34,0.94));
       box-shadow: var(--shadow);
+      padding: 18px;
       overflow: hidden;
     }
 
-    .panel h2,
-    .panel h3 {
+    .panel h2, .panel h3 {
       margin: 0 0 14px;
       font-size: 20px;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
     }
 
-    .muted {
+    .subtle {
       color: var(--muted);
-      line-height: 1.55;
-      font-size: 15px;
+      font-size: 14px;
+      line-height: 1.6;
     }
 
     .mode-grid {
       display: grid;
       grid-template-columns: 1fr;
       gap: 12px;
-      margin-top: 12px;
+      margin-top: 10px;
     }
 
     .mode-card {
-      position: relative;
       border: 1px solid var(--line);
-      border-radius: 18px;
+      background: rgba(13, 24, 46, 0.72);
+      border-radius: 20px;
       padding: 14px;
-      background: rgba(11, 26, 56, 0.8);
       transition: 0.18s ease;
     }
 
     .mode-card:has(input:checked) {
-      border-color: rgba(126,160,255,0.5);
-      background: linear-gradient(180deg, rgba(18,39,83,0.92), rgba(12,27,58,0.9));
-      box-shadow: inset 0 0 0 1px rgba(126,160,255,0.18);
+      border-color: rgba(136,170,255,0.42);
+      background: linear-gradient(180deg, rgba(20,38,76,0.9), rgba(12,24,48,0.86));
+      box-shadow: inset 0 0 0 1px rgba(136,170,255,0.12);
     }
 
     .mode-card label {
       display: flex;
-      gap: 12px;
       align-items: flex-start;
+      gap: 12px;
       cursor: pointer;
     }
 
     .mode-card input[type="radio"] {
+      accent-color: var(--accent);
       margin-top: 4px;
       transform: scale(1.15);
-      accent-color: var(--accent);
       flex: 0 0 auto;
     }
 
     .mode-title {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 800;
-      margin-bottom: 5px;
+      margin-bottom: 4px;
     }
 
     .mode-desc {
@@ -185,60 +205,49 @@
       line-height: 1.55;
     }
 
-    .note {
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 16px;
-      background: rgba(126,160,255,0.08);
-      border: 1px solid rgba(126,160,255,0.18);
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.55;
-    }
-
-    .field,
-    .field-inline {
+    .field {
       margin-top: 14px;
     }
 
-    .field label,
-    .field-inline label {
+    .field label {
       display: block;
-      font-size: 13px;
-      font-weight: 700;
-      color: #d7e3ff;
       margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #dce7ff;
       letter-spacing: 0.2px;
     }
 
     input[type="text"],
     input[type="password"],
     input[type="file"],
-    select,
-    textarea {
+    select {
       width: 100%;
-      border: 1px solid rgba(126,160,255,0.2);
-      background: rgba(4, 12, 28, 0.92);
+      border: 1px solid rgba(136,170,255,0.18);
+      background: rgba(4, 11, 24, 0.96);
       color: var(--text);
       border-radius: 16px;
       padding: 14px 14px;
       font-size: 16px;
       outline: none;
-      box-shadow: none;
       appearance: none;
       -webkit-appearance: none;
     }
 
-    input::placeholder,
-    textarea::placeholder {
-      color: #8fa3d3;
+    input:focus, select:focus {
+      border-color: rgba(136,170,255,0.46);
+      box-shadow: 0 0 0 4px rgba(136,170,255,0.10);
     }
 
-    input:focus,
-    select:focus,
-    textarea:focus {
-      border-color: rgba(126,160,255,0.5);
-      box-shadow: 0 0 0 4px rgba(126,160,255,0.12);
+    .note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(136,170,255,0.14);
+      background: rgba(136,170,255,0.08);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
     }
 
     .ai-fields {
@@ -246,8 +255,8 @@
       margin-top: 14px;
       padding: 14px;
       border-radius: 18px;
-      border: 1px solid rgba(126,160,255,0.16);
-      background: rgba(6,17,31,0.72);
+      border: 1px solid rgba(136,170,255,0.14);
+      background: rgba(5, 13, 28, 0.76);
     }
 
     .actions {
@@ -265,7 +274,7 @@
       font-size: 16px;
       font-weight: 800;
       cursor: pointer;
-      transition: transform 0.08s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+      transition: 0.12s ease;
     }
 
     .btn:active {
@@ -273,44 +282,43 @@
     }
 
     .btn-primary {
-      color: #071120;
-      background: linear-gradient(135deg, #9eb8ff, #7ea0ff 55%, #9b7eff);
-      box-shadow: 0 10px 24px rgba(126, 160, 255, 0.22);
+      background: linear-gradient(135deg, #a7bbff, #88aaff 55%, #b38cff);
+      color: #08111d;
+      box-shadow: 0 12px 26px rgba(136,170,255,0.22);
     }
 
     .btn-secondary {
+      background: rgba(136,170,255,0.10);
+      border: 1px solid rgba(136,170,255,0.16);
       color: var(--text);
-      background: rgba(126,160,255,0.12);
-      border: 1px solid rgba(126,160,255,0.18);
     }
 
     .btn[disabled] {
-      opacity: 0.6;
+      opacity: 0.62;
       cursor: not-allowed;
-      transform: none;
     }
 
     .status-card {
       margin-top: 16px;
-      border-radius: 18px;
       padding: 14px 16px;
-      border: 1px solid rgba(126,160,255,0.16);
-      background: rgba(8,18,40,0.72);
+      border-radius: 18px;
+      border: 1px solid rgba(136,170,255,0.12);
+      background: rgba(8, 15, 30, 0.72);
     }
 
     .status-label {
       font-size: 12px;
-      letter-spacing: 0.25px;
-      color: #a9b9df;
       text-transform: uppercase;
-      font-weight: 700;
+      letter-spacing: 0.24px;
+      color: #a9b9dc;
+      font-weight: 800;
     }
 
     .status-value {
       margin-top: 6px;
       font-size: 17px;
       font-weight: 800;
-      line-height: 1.35;
+      line-height: 1.4;
       word-break: break-word;
     }
 
@@ -318,59 +326,88 @@
     .warn { color: var(--warn); }
     .danger { color: var(--danger); }
 
+    .progress-wrap {
+      margin-top: 14px;
+    }
+
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      height: 12px;
+      width: 100%;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+      border: 1px solid rgba(136,170,255,0.10);
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #88aaff, #b38cff);
+      transition: width 0.25s ease;
+    }
+
     pre.logs {
       width: 100%;
+      min-height: 220px;
+      max-height: 420px;
       margin: 14px 0 0;
-      border-radius: 22px;
       padding: 18px 16px;
-      background: #020918;
-      border: 1px solid rgba(126,160,255,0.12);
+      border-radius: 22px;
+      background: #020916;
       color: #eaf0ff;
-      font-size: 14px;
-      line-height: 1.6;
+      border: 1px solid rgba(136,170,255,0.10);
       overflow-x: auto;
       overflow-y: auto;
       white-space: pre-wrap;
       word-break: break-word;
-      min-height: 220px;
-      max-height: 420px;
+      line-height: 1.6;
+      font-size: 14px;
       -webkit-overflow-scrolling: touch;
     }
 
     .tips {
       display: grid;
-      grid-template-columns: 1fr;
       gap: 12px;
-      margin-top: 16px;
     }
 
     .tip {
       padding: 14px;
       border-radius: 18px;
-      border: 1px solid rgba(126,160,255,0.16);
-      background: rgba(11, 26, 56, 0.72);
+      border: 1px solid rgba(136,170,255,0.12);
+      background: rgba(13, 24, 46, 0.72);
     }
 
-    .tip-title {
-      font-weight: 800;
+    .tip strong {
+      display: block;
       margin-bottom: 6px;
+      font-size: 15px;
     }
 
     .footer-note {
-      margin-top: 18px;
-      color: #9fb1d8;
+      margin-top: 16px;
+      color: #9eb0d6;
       font-size: 13px;
-      text-align: center;
       line-height: 1.55;
     }
 
-    @media (min-width: 760px) {
+    @media (min-width: 860px) {
       .app {
         padding: 28px 20px 36px;
       }
 
       .grid {
-        grid-template-columns: 1.2fr 0.8fr;
+        grid-template-columns: 1.25fr 0.75fr;
         align-items: start;
       }
 
@@ -383,18 +420,25 @@
 <body>
   <main class="app">
     <section class="hero">
-      <div class="badge">AI Video Enhancer</div>
-      <h1>Enhance your video with Fast or AI mode</h1>
+      <div class="pill">Premium PWA • Fast + AI Enhance</div>
+      <h1>AI Media Enhancer</h1>
       <p>
-        Fast mode keeps your current FFmpeg-style enhancement flow.
-        AI mode runs voice isolation, video upscaling, and final muxing when valid keys are provided.
-        If AI fails, the app should fall back to Fast Mode automatically.
+        Enhance your videos with a premium mobile-friendly workflow. Use Fast Mode for stable day-to-day improvement,
+        or enable AI Mode with your own ElevenLabs and fal keys. Higher resolutions like HD, 2K, and 4K are supported.
       </p>
+      <div class="top-actions">
+        <button id="installBtn" class="install-btn" type="button" hidden>Install App</button>
+        <button id="refreshBtn" class="ghost-btn" type="button">Refresh UI</button>
+      </div>
     </section>
 
     <div class="grid">
       <section class="panel">
         <h2>Enhancement Setup</h2>
+        <p class="subtle">
+          Keep it simple with one-tap Enhance, or fine-tune quality and AI options when needed.
+        </p>
+
         <div class="mode-grid">
           <div class="mode-card">
             <label for="modeFast">
@@ -402,8 +446,7 @@
               <div>
                 <div class="mode-title">Fast Mode</div>
                 <div class="mode-desc">
-                  Uses server-side FFmpeg for trim, cleanup, loudness balancing,
-                  scaling, and MP4 export. No API keys needed.
+                  Reliable enhancement using FFmpeg only. No API keys required.
                 </div>
               </div>
             </label>
@@ -415,8 +458,7 @@
               <div>
                 <div class="mode-title">AI Mode</div>
                 <div class="mode-desc">
-                  Uses ElevenLabs voice isolation and fal video upscaling.
-                  If credentials fail, the backend should switch to Fast Mode.
+                  Uses ElevenLabs voice isolation and fal video upscaling. Falls back to Fast Mode if AI fails.
                 </div>
               </div>
             </label>
@@ -427,42 +469,34 @@
           Fast Mode uses server-side FFmpeg only. No API keys needed.
         </div>
 
+        <div class="field">
+          <label for="qualitySelect">Output Quality</label>
+          <select id="qualitySelect">
+            <option value="auto">Standard (Auto)</option>
+            <option value="hd">HD (1080p)</option>
+            <option value="2k">2K (1440p)</option>
+            <option value="4k">4K (2160p)</option>
+          </select>
+        </div>
+
+        <div id="qualityNote" class="note">
+          Standard and HD modes are optimized for speed and compatibility.
+        </div>
+
         <div id="aiFields" class="ai-fields">
           <div class="field">
             <label for="elevenLabsKey">ElevenLabs API Key</label>
-            <input
-              id="elevenLabsKey"
-              type="password"
-              placeholder="Enter ElevenLabs API key"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-            />
+            <input id="elevenLabsKey" type="password" placeholder="Enter ElevenLabs API key" autocomplete="off" />
           </div>
 
           <div class="field">
             <label for="falKey">fal API Key</label>
-            <input
-              id="falKey"
-              type="password"
-              placeholder="Enter fal API key"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-            />
+            <input id="falKey" type="password" placeholder="Enter fal API key" autocomplete="off" />
           </div>
 
           <div class="field">
             <label for="falModel">fal Model Slug</label>
-            <input
-              id="falModel"
-              type="text"
-              placeholder="Enter fal model slug"
-              value="fal-ai/video/upscaler"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-            />
+            <input id="falModel" type="text" value="fal-ai/video/upscaler" placeholder="Enter fal model slug" autocomplete="off" />
           </div>
         </div>
 
@@ -472,17 +506,23 @@
         </div>
 
         <div class="actions">
-          <button id="enhanceBtn" class="btn btn-primary" type="button">
-            Enhance Video
-          </button>
-          <button id="clearBtn" class="btn btn-secondary" type="button">
-            Clear Logs
-          </button>
+          <button id="enhanceBtn" class="btn btn-primary" type="button">Enhance Video</button>
+          <button id="clearBtn" class="btn btn-secondary" type="button">Clear Logs</button>
         </div>
 
         <div class="status-card">
           <div class="status-label">Status</div>
           <div id="statusText" class="status-value">Idle</div>
+
+          <div class="progress-wrap">
+            <div class="progress-meta">
+              <span>Progress</span>
+              <span id="progressText">0%</span>
+            </div>
+            <div class="progress-bar">
+              <div id="progressFill" class="progress-fill"></div>
+            </div>
+          </div>
         </div>
 
         <pre id="logs" class="logs">Ready.</pre>
@@ -490,43 +530,37 @@
 
       <aside class="panel">
         <h3>Quick Guidance</h3>
-        <p class="muted">
-          Use Fast Mode for reliable enhancement without any third-party keys.
-          Switch to AI Mode only if you have valid ElevenLabs and fal credentials.
-        </p>
-
         <div class="tips">
           <div class="tip">
-            <div class="tip-title">Fast Mode</div>
-            <div class="muted">
-              Best for day-to-day use. Stable and simple. No external AI dependency.
-            </div>
+            <strong>Fast Mode</strong>
+            Best for reliable enhancement without any third-party key dependency.
           </div>
-
           <div class="tip">
-            <div class="tip-title">AI Mode</div>
-            <div class="muted">
-              Better voice cleanup and video upscaling when provider keys are valid.
-            </div>
+            <strong>AI Mode</strong>
+            Best for stronger cleanup and upscaling when valid provider keys are available.
           </div>
-
           <div class="tip">
-            <div class="tip-title">Fallback</div>
-            <div class="muted">
-              If AI fails because of invalid keys, model issues, or provider errors,
-              your backend should automatically continue with Fast Mode.
-            </div>
+            <strong>2K / 4K</strong>
+            Without AI, higher resolution is basic upscale. With AI, detail improvement is better.
+          </div>
+          <div class="tip">
+            <strong>PWA</strong>
+            Install this app to your phone home screen for an app-like experience.
           </div>
         </div>
 
         <div class="footer-note">
-          Endpoint used by this page: <strong>/api/enhance</strong>
+          Endpoint used by this app: <strong>/api/enhance</strong><br />
+          Works best when `public/icon-192.png` and `public/icon-512.png` are added.
         </div>
       </aside>
     </div>
   </main>
 
   <script>
+    let deferredPrompt = null;
+    let progressTimer = null;
+
     const videoInput = document.getElementById("videoInput");
     const enhanceBtn = document.getElementById("enhanceBtn");
     const clearBtn = document.getElementById("clearBtn");
@@ -535,10 +569,15 @@
     const aiFields = document.getElementById("aiFields");
     const modeNote = document.getElementById("modeNote");
     const modeInputs = document.querySelectorAll('input[name="enhanceMode"]');
-
     const elevenLabsKeyEl = document.getElementById("elevenLabsKey");
     const falKeyEl = document.getElementById("falKey");
     const falModelEl = document.getElementById("falModel");
+    const qualitySelect = document.getElementById("qualitySelect");
+    const qualityNote = document.getElementById("qualityNote");
+    const progressFill = document.getElementById("progressFill");
+    const progressText = document.getElementById("progressText");
+    const installBtn = document.getElementById("installBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
 
     function appendLog(message) {
       logsEl.textContent += (logsEl.textContent.trim() ? "\n" : "") + message;
@@ -555,21 +594,53 @@
       if (tone) statusText.classList.add(tone);
     }
 
+    function setProgress(value) {
+      const safe = Math.max(0, Math.min(100, value));
+      progressFill.style.width = safe + "%";
+      progressText.textContent = safe + "%";
+    }
+
+    function startPseudoProgress() {
+      stopPseudoProgress();
+      let value = 6;
+      setProgress(value);
+      progressTimer = setInterval(() => {
+        if (value < 88) {
+          value += Math.random() * 7;
+          setProgress(Math.round(value));
+        }
+      }, 700);
+    }
+
+    function stopPseudoProgress(finalValue = 100) {
+      if (progressTimer) {
+        clearInterval(progressTimer);
+        progressTimer = null;
+      }
+      setProgress(finalValue);
+    }
+
     function getSelectedMode() {
       return document.querySelector('input[name="enhanceMode"]:checked')?.value || "fast";
     }
 
     function updateEnhanceUI() {
       const mode = getSelectedMode();
-
       if (mode === "ai") {
         aiFields.style.display = "block";
-        modeNote.textContent =
-          "AI Mode uses ElevenLabs + fal. If keys are missing or fail, backend fallback should use Fast Mode.";
+        modeNote.textContent = "AI Mode uses ElevenLabs + fal. If keys are missing or fail, backend fallback should use Fast Mode.";
       } else {
         aiFields.style.display = "none";
-        modeNote.textContent =
-          "Fast Mode uses server-side FFmpeg only. No API keys needed.";
+        modeNote.textContent = "Fast Mode uses server-side FFmpeg only. No API keys needed.";
+      }
+    }
+
+    function updateQualityNote() {
+      const quality = qualitySelect.value;
+      if (quality === "4k" || quality === "2k") {
+        qualityNote.textContent = "For best results in 2K/4K, use AI Mode. Fast Mode will upscale resolution but not add real detail.";
+      } else {
+        qualityNote.textContent = "Standard and HD modes are optimized for speed and compatibility.";
       }
     }
 
@@ -589,7 +660,7 @@
             json.logs.forEach(line => appendLog(line));
           }
           return json.error || `Server responded with status ${response.status}`;
-        } catch (_) {
+        } catch {
           return text || `Server responded with status ${response.status}`;
         }
       }
@@ -605,6 +676,7 @@
       }
 
       const mode = getSelectedMode();
+      const quality = qualitySelect.value;
       const elevenLabsKey = elevenLabsKeyEl.value.trim();
       const falKey = falKeyEl.value.trim();
       const falModel = falModelEl.value.trim();
@@ -612,8 +684,10 @@
       resetLogs();
       setStatus("Processing...", "warn");
       enhanceBtn.disabled = true;
+      startPseudoProgress();
 
       appendLog(`Starting ${mode === "ai" ? "AI" : "fast"} enhancement.`);
+      appendLog(`Selected quality: ${quality}.`);
 
       if (mode === "ai" && (!elevenLabsKey || !falKey || !falModel)) {
         appendLog("AI credentials or model are incomplete. Backend may fallback to Fast Mode.");
@@ -623,6 +697,7 @@
         const formData = new FormData();
         formData.append("video", file);
         formData.append("mode", mode);
+        formData.append("quality", quality);
         formData.append("elevenLabsKey", elevenLabsKey);
         formData.append("falKey", falKey);
         formData.append("falModel", falModel);
@@ -636,6 +711,7 @@
         if (!response.ok) {
           const errorText = await readErrorResponse(response);
           appendLog(`Error: ${errorText}`);
+          stopPseudoProgress(100);
           setStatus("Failed", "danger");
           return;
         }
@@ -650,7 +726,7 @@
             const serverLogs = JSON.parse(decodeURIComponent(logsHeader));
             logsEl.textContent = "";
             serverLogs.forEach(line => appendLog(line));
-          } catch (_) {}
+          } catch {}
         }
 
         if (fallbackUsed) {
@@ -672,6 +748,8 @@
 
         setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
 
+        stopPseudoProgress(100);
+
         if (modeUsed === "ai") {
           setStatus("Done - AI enhancement completed", "success");
         } else if (fallbackUsed) {
@@ -681,24 +759,56 @@
         }
       } catch (error) {
         appendLog(`Error: ${error.message || "Enhancement failed."}`);
+        stopPseudoProgress(100);
         setStatus("Failed", "danger");
       } finally {
         enhanceBtn.disabled = false;
       }
     }
 
-    enhanceBtn.addEventListener("click", enhanceVideo);
     clearBtn.addEventListener("click", () => {
       resetLogs();
       setStatus("Idle");
+      setProgress(0);
     });
 
-    modeInputs.forEach(input => {
-      input.addEventListener("change", updateEnhanceUI);
+    enhanceBtn.addEventListener("click", enhanceVideo);
+    refreshBtn.addEventListener("click", () => window.location.reload());
+
+    modeInputs.forEach(input => input.addEventListener("change", updateEnhanceUI));
+    qualitySelect.addEventListener("change", updateQualityNote);
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.hidden = false;
     });
+
+    installBtn.addEventListener("click", async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.hidden = true;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      installBtn.hidden = true;
+      appendLog("App installed successfully.");
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch((err) => {
+          console.error("Service worker registration failed:", err);
+        });
+      });
+    }
 
     updateEnhanceUI();
+    updateQualityNote();
     setStatus("Idle");
+    setProgress(0);
   </script>
 </body>
 </html>
