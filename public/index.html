@@ -1,1 +1,704 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/><meta name="theme-color" content="#08111f"/><title>Media Enhancer Pro</title><meta name="description" content="Premium AI video and audio enhancement app with fast and AI modes."/><link rel="manifest" href="/manifest.json"/><link rel="icon" href="/icons/icon-192.png"/><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/><link rel="stylesheet" href="/styles.css"/></head><body><div class="app-shell"><section class="hero"><div class="card hero-main"><div class="badge">Premium PWA • Fast + AI Pipeline</div><h1>Media Enhancer Pro</h1><p class="sub">Keep your current fast enhancement flow, and unlock AI enhancement only when you choose it. Enter your ElevenLabs and fal keys on demand, run the AI pipeline, and download a final MP4.</p><div class="hero-points"><div class="pill">⚡ Fast FFmpeg path</div><div class="pill">🤖 AI voice isolation + video upscaling</div><div class="pill">🔐 Optional device-only key memory</div><div class="pill">📱 Installable PWA</div></div></div><div class="card hero-side install-box"><h3>Install the app</h3><p>This build includes a PWA manifest, service worker, premium app icons, and a mobile-friendly layout. Install it from your browser for a cleaner, app-like experience.</p><div class="install-actions"><button id="installBtn" class="btn btn-subtle" disabled>Install app</button><button id="resetAction" class="btn btn-ghost">Reset</button></div><p class="footer-note">AI mode uses your own API keys per request. Keys are not stored on the server. If you enable device memory, they are kept only in your browser’s local storage.</p></div></section><section class="layout"><div class="card panel"><div class="section-title"><h3>Enhancement workspace</h3><div class="mode-switch"><button id="modeFast" class="mode-btn active-fast">⚡ Fast Enhance</button><button id="modeAi" class="mode-btn">🤖 AI Enhance</button></div></div><div class="stack"><div><label for="fileInput">Upload video</label><input id="fileInput" type="file" accept="video/*"/><div class="hint">Supported examples: MP4, MOV, WEBM, MKV and similar browser-uploadable video files.</div></div><div class="grid-2"><div><label for="trimStart">Trim start (seconds)</label><input id="trimStart" type="number" min="0" step="0.1" value="0"/></div><div><label for="trimEnd">Trim end (seconds)</label><input id="trimEnd" type="number" min="0" step="0.1" value="0"/></div></div><div class="grid-3"><div><label for="preset">Video preset</label><select id="preset"><option value="balanced">Balanced</option><option value="clarity">Clarity boost</option><option value="social">Social media</option><option value="cinematic">Cinematic clean</option></select></div><div><label for="resolution">Output resolution</label><select id="resolution"><option value="720">1280×720</option><option value="1080" selected>1920×1080</option><option value="2160">3840×2160</option></select></div><div><label for="audioPreset">Audio preset</label><select id="audioPreset"><option value="voice">Voice clear</option><option value="balanced" selected>Balanced</option><option value="loud">Loud boost</option></select></div></div><div class="grid-2"><div><label for="crf">Video quality (CRF)</label><input id="crf" type="range" min="18" max="32" step="1" value="23"/><div class="hint">Lower = higher quality. Current: <span id="crfValue">23</span></div></div><div><label for="audioGain">Audio gain</label><input id="audioGain" type="range" min="0" max="8" step="0.5" value="2"/><div class="hint">Current: <span id="audioGainValue">+2 dB</span></div></div></div><div id="aiBox" class="ai-box hidden"><div class="section-title"><h3>AI settings</h3><div class="checkline"><input id="rememberKeys" type="checkbox"/><span>Remember keys on this device</span></div></div><div class="stack"><div class="grid-2"><div><label for="elevenKey">ElevenLabs API key</label><input id="elevenKey" type="password" placeholder="Enter ElevenLabs key"/></div><div><label for="falKey">fal API key</label><input id="falKey" type="password" placeholder="Enter fal key"/></div></div><div class="grid-2"><div><label for="modelId">fal video model ID</label><input id="modelId" type="text" value="clarityai/crystal-video-upscaler"/><div class="hint">Change this only if your fal account uses another compatible model.</div></div><div><label for="scaleFactor">AI scale factor</label><select id="scaleFactor"><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select><div class="hint">Use smaller scale factors for faster, more reliable jobs.</div></div></div><div class="actions"><button id="aiAction" class="btn btn-ai">Run AI Enhance</button><button id="clearKeys" class="btn btn-ghost" type="button">Clear saved keys</button></div></div></div><div class="actions"><button id="fastAction" class="btn btn-fast">Run Fast Enhance</button></div><div class="video-frame"><video id="preview" controls playsinline preload="metadata"></video></div><div id="downloadBox" class="download-box">Ready: <a id="downloadLink" href="#" download>Download processed MP4</a></div></div></div><div class="stack"><div class="card panel"><div class="section-title"><h3>Progress</h3><div id="statusText" class="status-chip">Waiting for video</div></div><div class="progress"><div id="progressBar"></div></div><div class="footer-note">Fast mode keeps your current FFmpeg-style enhancement flow. AI mode runs voice isolation, video upscaling, and then a final mux pass.</div></div><div class="card panel"><div class="section-title"><h3>Logs</h3></div><div id="log" class="log">Ready.</div></div><div class="small-cards"><div class="mini"><h4>Fast mode</h4><p>Uses server-side FFmpeg for trim, cleanup, loudness shaping, scaling, and MP4 export.</p></div><div class="mini"><h4>AI mode</h4><p>Uses ElevenLabs voice isolation for cleaner speech and fal video upscaling for stronger visual enhancement.</p></div></div></div></section></div><script src="/app.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>AI Video Enhancer</title>
+  <meta
+    name="description"
+    content="Enhance videos with Fast Mode or AI Mode. Mobile-friendly PWA-style interface."
+  />
+  <style>
+    :root {
+      --bg: #06111f;
+      --bg-2: #0a1730;
+      --panel: rgba(8, 18, 40, 0.9);
+      --panel-2: rgba(12, 28, 64, 0.95);
+      --text: #eef4ff;
+      --muted: #b9c8ea;
+      --line: rgba(126, 160, 255, 0.2);
+      --accent: #7ea0ff;
+      --accent-2: #9b7eff;
+      --success: #69d59a;
+      --warn: #ffd36b;
+      --danger: #ff8b8b;
+      --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(126,160,255,0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(155,126,255,0.12), transparent 24%),
+        linear-gradient(180deg, var(--bg-2), var(--bg));
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow-x: hidden;
+    }
+
+    body {
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 18px 14px 28px;
+    }
+
+    .hero {
+      background: linear-gradient(180deg, rgba(15,33,74,0.95), rgba(8,18,40,0.92));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 22px 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -20% -40% auto;
+      width: 240px;
+      height: 240px;
+      background: radial-gradient(circle, rgba(126,160,255,0.16), transparent 65%);
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(126,160,255,0.24);
+      background: rgba(126,160,255,0.08);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+
+    h1 {
+      margin: 14px 0 8px;
+      font-size: clamp(28px, 7vw, 42px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+      max-width: 680px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(10,23,48,0.98), rgba(6,17,31,0.98));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel h2,
+    .panel h3 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      letter-spacing: -0.01em;
+    }
+
+    .muted {
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 15px;
+    }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .mode-card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      background: rgba(11, 26, 56, 0.8);
+      transition: 0.18s ease;
+    }
+
+    .mode-card:has(input:checked) {
+      border-color: rgba(126,160,255,0.5);
+      background: linear-gradient(180deg, rgba(18,39,83,0.92), rgba(12,27,58,0.9));
+      box-shadow: inset 0 0 0 1px rgba(126,160,255,0.18);
+    }
+
+    .mode-card label {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+
+    .mode-card input[type="radio"] {
+      margin-top: 4px;
+      transform: scale(1.15);
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+
+    .mode-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 5px;
+    }
+
+    .mode-desc {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .note {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(126,160,255,0.08);
+      border: 1px solid rgba(126,160,255,0.18);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .field,
+    .field-inline {
+      margin-top: 14px;
+    }
+
+    .field label,
+    .field-inline label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #d7e3ff;
+      margin-bottom: 8px;
+      letter-spacing: 0.2px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="file"],
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid rgba(126,160,255,0.2);
+      background: rgba(4, 12, 28, 0.92);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 14px 14px;
+      font-size: 16px;
+      outline: none;
+      box-shadow: none;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #8fa3d3;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(126,160,255,0.5);
+      box-shadow: 0 0 0 4px rgba(126,160,255,0.12);
+    }
+
+    .ai-fields {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(126,160,255,0.16);
+      background: rgba(6,17,31,0.72);
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 18px;
+      padding: 15px 16px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.08s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      color: #071120;
+      background: linear-gradient(135deg, #9eb8ff, #7ea0ff 55%, #9b7eff);
+      box-shadow: 0 10px 24px rgba(126, 160, 255, 0.22);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: rgba(126,160,255,0.12);
+      border: 1px solid rgba(126,160,255,0.18);
+    }
+
+    .btn[disabled] {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-card {
+      margin-top: 16px;
+      border-radius: 18px;
+      padding: 14px 16px;
+      border: 1px solid rgba(126,160,255,0.16);
+      background: rgba(8,18,40,0.72);
+    }
+
+    .status-label {
+      font-size: 12px;
+      letter-spacing: 0.25px;
+      color: #a9b9df;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .status-value {
+      margin-top: 6px;
+      font-size: 17px;
+      font-weight: 800;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .success { color: var(--success); }
+    .warn { color: var(--warn); }
+    .danger { color: var(--danger); }
+
+    pre.logs {
+      width: 100%;
+      margin: 14px 0 0;
+      border-radius: 22px;
+      padding: 18px 16px;
+      background: #020918;
+      border: 1px solid rgba(126,160,255,0.12);
+      color: #eaf0ff;
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-x: auto;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 220px;
+      max-height: 420px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tips {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .tip {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(126,160,255,0.16);
+      background: rgba(11, 26, 56, 0.72);
+    }
+
+    .tip-title {
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: #9fb1d8;
+      font-size: 13px;
+      text-align: center;
+      line-height: 1.55;
+    }
+
+    @media (min-width: 760px) {
+      .app {
+        padding: 28px 20px 36px;
+      }
+
+      .grid {
+        grid-template-columns: 1.2fr 0.8fr;
+        align-items: start;
+      }
+
+      .actions {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div class="badge">AI Video Enhancer</div>
+      <h1>Enhance your video with Fast or AI mode</h1>
+      <p>
+        Fast mode keeps your current FFmpeg-style enhancement flow.
+        AI mode runs voice isolation, video upscaling, and final muxing when valid keys are provided.
+        If AI fails, the app should fall back to Fast Mode automatically.
+      </p>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Enhancement Setup</h2>
+        <div class="mode-grid">
+          <div class="mode-card">
+            <label for="modeFast">
+              <input type="radio" id="modeFast" name="enhanceMode" value="fast" checked />
+              <div>
+                <div class="mode-title">Fast Mode</div>
+                <div class="mode-desc">
+                  Uses server-side FFmpeg for trim, cleanup, loudness balancing,
+                  scaling, and MP4 export. No API keys needed.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <div class="mode-card">
+            <label for="modeAI">
+              <input type="radio" id="modeAI" name="enhanceMode" value="ai" />
+              <div>
+                <div class="mode-title">AI Mode</div>
+                <div class="mode-desc">
+                  Uses ElevenLabs voice isolation and fal video upscaling.
+                  If credentials fail, the backend should switch to Fast Mode.
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div id="modeNote" class="note">
+          Fast Mode uses server-side FFmpeg only. No API keys needed.
+        </div>
+
+        <div id="aiFields" class="ai-fields">
+          <div class="field">
+            <label for="elevenLabsKey">ElevenLabs API Key</label>
+            <input
+              id="elevenLabsKey"
+              type="password"
+              placeholder="Enter ElevenLabs API key"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </div>
+
+          <div class="field">
+            <label for="falKey">fal API Key</label>
+            <input
+              id="falKey"
+              type="password"
+              placeholder="Enter fal API key"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </div>
+
+          <div class="field">
+            <label for="falModel">fal Model Slug</label>
+            <input
+              id="falModel"
+              type="text"
+              placeholder="Enter fal model slug"
+              value="fal-ai/video/upscaler"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="videoInput">Upload Video</label>
+          <input id="videoInput" type="file" accept="video/*" />
+        </div>
+
+        <div class="actions">
+          <button id="enhanceBtn" class="btn btn-primary" type="button">
+            Enhance Video
+          </button>
+          <button id="clearBtn" class="btn btn-secondary" type="button">
+            Clear Logs
+          </button>
+        </div>
+
+        <div class="status-card">
+          <div class="status-label">Status</div>
+          <div id="statusText" class="status-value">Idle</div>
+        </div>
+
+        <pre id="logs" class="logs">Ready.</pre>
+      </section>
+
+      <aside class="panel">
+        <h3>Quick Guidance</h3>
+        <p class="muted">
+          Use Fast Mode for reliable enhancement without any third-party keys.
+          Switch to AI Mode only if you have valid ElevenLabs and fal credentials.
+        </p>
+
+        <div class="tips">
+          <div class="tip">
+            <div class="tip-title">Fast Mode</div>
+            <div class="muted">
+              Best for day-to-day use. Stable and simple. No external AI dependency.
+            </div>
+          </div>
+
+          <div class="tip">
+            <div class="tip-title">AI Mode</div>
+            <div class="muted">
+              Better voice cleanup and video upscaling when provider keys are valid.
+            </div>
+          </div>
+
+          <div class="tip">
+            <div class="tip-title">Fallback</div>
+            <div class="muted">
+              If AI fails because of invalid keys, model issues, or provider errors,
+              your backend should automatically continue with Fast Mode.
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-note">
+          Endpoint used by this page: <strong>/api/enhance</strong>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const videoInput = document.getElementById("videoInput");
+    const enhanceBtn = document.getElementById("enhanceBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const logsEl = document.getElementById("logs");
+    const statusText = document.getElementById("statusText");
+    const aiFields = document.getElementById("aiFields");
+    const modeNote = document.getElementById("modeNote");
+    const modeInputs = document.querySelectorAll('input[name="enhanceMode"]');
+
+    const elevenLabsKeyEl = document.getElementById("elevenLabsKey");
+    const falKeyEl = document.getElementById("falKey");
+    const falModelEl = document.getElementById("falModel");
+
+    function appendLog(message) {
+      logsEl.textContent += (logsEl.textContent.trim() ? "\n" : "") + message;
+      logsEl.scrollTop = logsEl.scrollHeight;
+    }
+
+    function resetLogs() {
+      logsEl.textContent = "Ready.";
+    }
+
+    function setStatus(message, tone) {
+      statusText.textContent = message;
+      statusText.className = "status-value";
+      if (tone) statusText.classList.add(tone);
+    }
+
+    function getSelectedMode() {
+      return document.querySelector('input[name="enhanceMode"]:checked')?.value || "fast";
+    }
+
+    function updateEnhanceUI() {
+      const mode = getSelectedMode();
+
+      if (mode === "ai") {
+        aiFields.style.display = "block";
+        modeNote.textContent =
+          "AI Mode uses ElevenLabs + fal. If keys are missing or fail, backend fallback should use Fast Mode.";
+      } else {
+        aiFields.style.display = "none";
+        modeNote.textContent =
+          "Fast Mode uses server-side FFmpeg only. No API keys needed.";
+      }
+    }
+
+    async function readErrorResponse(response) {
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+
+      if (text.startsWith("<!DOCTYPE") || text.includes("Cannot POST")) {
+        return "API route not found. Check that your backend exposes POST /api/enhance.";
+      }
+
+      if (contentType.includes("application/json")) {
+        try {
+          const json = JSON.parse(text);
+          if (json.logs && Array.isArray(json.logs)) {
+            logsEl.textContent = "";
+            json.logs.forEach(line => appendLog(line));
+          }
+          return json.error || `Server responded with status ${response.status}`;
+        } catch (_) {
+          return text || `Server responded with status ${response.status}`;
+        }
+      }
+
+      return text || `Server responded with status ${response.status}`;
+    }
+
+    async function enhanceVideo() {
+      const file = videoInput.files[0];
+      if (!file) {
+        alert("Please upload a video first.");
+        return;
+      }
+
+      const mode = getSelectedMode();
+      const elevenLabsKey = elevenLabsKeyEl.value.trim();
+      const falKey = falKeyEl.value.trim();
+      const falModel = falModelEl.value.trim();
+
+      resetLogs();
+      setStatus("Processing...", "warn");
+      enhanceBtn.disabled = true;
+
+      appendLog(`Starting ${mode === "ai" ? "AI" : "fast"} enhancement.`);
+
+      if (mode === "ai" && (!elevenLabsKey || !falKey || !falModel)) {
+        appendLog("AI credentials or model are incomplete. Backend may fallback to Fast Mode.");
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("video", file);
+        formData.append("mode", mode);
+        formData.append("elevenLabsKey", elevenLabsKey);
+        formData.append("falKey", falKey);
+        formData.append("falModel", falModel);
+        formData.append("allowAIFallback", "true");
+
+        const response = await fetch("/api/enhance", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errorText = await readErrorResponse(response);
+          appendLog(`Error: ${errorText}`);
+          setStatus("Failed", "danger");
+          return;
+        }
+
+        const modeUsed = response.headers.get("X-Enhancement-Mode") || "fast";
+        const fallbackUsed = response.headers.get("X-Fallback-Used") === "true";
+        const fallbackReasonHeader = response.headers.get("X-Fallback-Reason");
+        const logsHeader = response.headers.get("X-Logs");
+
+        if (logsHeader) {
+          try {
+            const serverLogs = JSON.parse(decodeURIComponent(logsHeader));
+            logsEl.textContent = "";
+            serverLogs.forEach(line => appendLog(line));
+          } catch (_) {}
+        }
+
+        if (fallbackUsed) {
+          const reason = fallbackReasonHeader
+            ? decodeURIComponent(fallbackReasonHeader)
+            : "AI provider issue.";
+          appendLog(`Fallback activated: ${reason}`);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+
+        const anchor = document.createElement("a");
+        anchor.href = downloadUrl;
+        anchor.download = "enhanced-video.mp4";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
+
+        if (modeUsed === "ai") {
+          setStatus("Done - AI enhancement completed", "success");
+        } else if (fallbackUsed) {
+          setStatus("Done - Fast Mode used after AI fallback", "success");
+        } else {
+          setStatus("Done - Fast enhancement completed", "success");
+        }
+      } catch (error) {
+        appendLog(`Error: ${error.message || "Enhancement failed."}`);
+        setStatus("Failed", "danger");
+      } finally {
+        enhanceBtn.disabled = false;
+      }
+    }
+
+    enhanceBtn.addEventListener("click", enhanceVideo);
+    clearBtn.addEventListener("click", () => {
+      resetLogs();
+      setStatus("Idle");
+    });
+
+    modeInputs.forEach(input => {
+      input.addEventListener("change", updateEnhanceUI);
+    });
+
+    updateEnhanceUI();
+    setStatus("Idle");
+  </script>
+</body>
+</html>
