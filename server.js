@@ -17,6 +17,9 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+// Serve frontend from /public
+app.use(express.static(path.join(__dirname, "public")));
+
 const upload = multer({
   dest: path.join(os.tmpdir(), "uploads"),
   limits: {
@@ -382,6 +385,11 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "video-enhancer",
   });
+});
+
+// Root route for browser open
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 app.post("/api/enhance", upload.single("video"), async (req, res) => {
