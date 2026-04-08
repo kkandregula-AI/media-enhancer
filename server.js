@@ -17,7 +17,6 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Serve frontend from /public
 app.use(express.static(path.join(__dirname, "public")));
 
 const upload = multer({
@@ -57,6 +56,19 @@ function asBool(v, defaultValue = false) {
   return v === true || v === "true" || v === 1 || v === "1";
 }
 
+function getScaleFilter(quality) {
+  switch (quality) {
+    case "4k":
+      return "scale=-2:2160:flags=lanczos";
+    case "2k":
+      return "scale=-2:1440:flags=lanczos";
+    case "hd":
+      return "scale=-2:1080:flags=lanczos";
+    default:
+      return "scale='min(1280,iw)':-2:flags=lanczos";
+  }
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 180000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -72,9 +84,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 180000) {
   }
 }
 
-async function runFastEnhance(inputPath, outputPath) {
+async function runFastEnhance(inputPath, outputPath, quality = "auto") {
   const vf = [
-    "scale='min(1280,iw)':-2:flags=lanczos",
+    getScaleFilter(quality),
     "eq=contrast=1.03:saturation=1.05:brightness=0.01",
     "unsharp=5:5:0.8:3:3:0.4",
   ].join(",");
@@ -300,21 +312,15 @@ async function runAIPipelineWithFallback({
   elevenLabsKey,
   falKey,
   falModel,
+  quality,
   logs,
 }) {
   const aiReady =
     hasValue(elevenLabsKey) && hasValue(falKey) && hasValue(falModel);
 
   if (!aiReady) {
-    logs.push(
-      logLine(
-        "INFO",
-        "AI credentials or model missing. Switching to Fast Mode."
-      )
-    );
-
-    await runFastEnhance(inputPath, outputPath);
-
+    logs.push(logLine("INFO", "AI credentials or model missing. Switching to Fast Mode."));
+    await runFastEnhance(inputPath, outputPath, quality);
     logs.push(logLine("SUCCESS", "Fast enhancement completed."));
     return {
       modeUsed: "fast",
@@ -358,7 +364,7 @@ async function runAIPipelineWithFallback({
     logs.push(logLine("WARN", `AI enhancement failed: ${err.message}`));
     logs.push(logLine("INFO", "Falling back to Fast Mode."));
 
-    await runFastEnhance(inputPath, outputPath);
+    await runFastEnhance(inputPath, outputPath, quality);
 
     logs.push(logLine("SUCCESS", "Fast enhancement completed after fallback."));
 
@@ -387,7 +393,6 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// Root route for browser open
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -410,12 +415,14 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
     outputPath = tempFile(".mp4");
 
     const mode = (req.body.mode || "fast").toLowerCase();
+    const quality = req.body.quality || "auto";
     const elevenLabsKey = req.body.elevenLabsKey || "";
     const falKey = req.body.falKey || "";
     const falModel = req.body.falModel || "";
     const allowAIFallback = asBool(req.body.allowAIFallback, true);
 
     logs.push(logLine("INFO", `Requested mode: ${mode}.`));
+    logs.push(logLine("INFO", `Selected quality: ${quality}.`));
 
     let result;
 
@@ -427,6 +434,7 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
           elevenLabsKey,
           falKey,
           falModel,
+          quality,
           logs,
         });
       } else {
@@ -452,11 +460,7 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
           });
 
           logs.push(logLine("AI", "Step 3/3: Final mux and encode via FFmpeg."));
-          await replaceVideoAudio(
-            upscaledVideoPath,
-            isolatedAudioPath,
-            outputPath
-          );
+          await replaceVideoAudio(upscaledVideoPath, isolatedAudioPath, outputPath);
 
           logs.push(logLine("SUCCESS", "AI enhancement completed successfully."));
 
@@ -472,7 +476,7 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
       }
     } else {
       logs.push(logLine("INFO", "Running Fast Mode."));
-      await runFastEnhance(inputPath, outputPath);
+      await runFastEnhance(inputPath, outputPath, quality);
       logs.push(logLine("SUCCESS", "Fast enhancement completed."));
       result = {
         modeUsed: "fast",
@@ -484,18 +488,12 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
     const finalBuffer = fs.readFileSync(outputPath);
 
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="enhanced-video.mp4"'
-    );
+    res.setHeader("Content-Disposition", 'attachment; filename="enhanced-video.mp4"');
     res.setHeader("X-Enhancement-Mode", result.modeUsed);
     res.setHeader("X-Fallback-Used", String(result.fallbackUsed));
 
     if (result.fallbackReason) {
-      res.setHeader(
-        "X-Fallback-Reason",
-        encodeURIComponent(result.fallbackReason)
-      );
+      res.setHeader("X-Fallback-Reason", encodeURIComponent(result.fallbackReason));
     }
 
     res.setHeader("X-Logs", encodeURIComponent(JSON.stringify(logs)));
