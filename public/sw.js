@@ -1,10 +1,11 @@
-const CACHE_NAME = "ai-media-enhancer-v2";
+const CACHE_NAME = "ai-media-enhancer-v3";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/manifest.json",
   "/icon-192.png",
-  "/icon-512.png"
+  "/icon-512.png",
+  "/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -32,20 +33,16 @@ self.addEventListener("fetch", (event) => {
 
   if (request.method !== "GET") return;
 
-  // For API calls, always go to network first and do not cache POSTs here.
   if (request.url.includes("/api/")) {
     event.respondWith(fetch(request));
     return;
   }
 
-  // Network-first for HTML and app shell so old UI does not stay stuck.
   event.respondWith(
     fetch(request)
       .then((response) => {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, copy);
-        });
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         return response;
       })
       .catch(async () => {
