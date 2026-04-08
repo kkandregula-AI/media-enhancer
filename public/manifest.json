@@ -1,12 +1,13 @@
 {
   "name": "AI Media Enhancer",
   "short_name": "Enhancer",
-  "description": "Premium PWA for fast and AI-powered audio/video enhancement.",
+  "description": "Premium PWA for fast and AI-powered video enhancement with quality controls.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#07111f",
   "theme_color": "#0b1220",
-  "orientation": "portrait",
   "icons": [
     {
       "src": "/icon-192.png",
