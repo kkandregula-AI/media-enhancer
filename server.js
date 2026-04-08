@@ -1,90 +1,101 @@
 const express = require("express");
+const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const { execFile } = require("child_process");
 const util = require("util");
+const { execFile } = require("child_process");
 
 const execFileAsync = util.promisify(execFile);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(cors());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 const upload = multer({
   dest: path.join(os.tmpdir(), "uploads"),
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB
+    fileSize: 500 * 1024 * 1024,
   },
 });
 
+function logLine(step, message) {
+  return `[${new Date().toLocaleTimeString()}] ${step} ${message}`;
+}
+
 function safeUnlink(filePath) {
   try {
-    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
   } catch (err) {
     console.error("Cleanup error:", err.message);
   }
 }
 
-function makeTempFile(ext = ".mp4") {
+function tempFile(ext) {
   return path.join(
     os.tmpdir(),
-    `enhance-${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`
+    `enhancer-${Date.now()}-${crypto.randomBytes(6).toString("hex")}${ext}`
   );
-}
-
-function normalizeBool(v) {
-  return v === true || v === "true" || v === 1 || v === "1";
 }
 
 function hasValue(v) {
   return typeof v === "string" ? v.trim().length > 0 : !!v;
 }
 
-function buildLog(step, message) {
-  return `[${new Date().toLocaleTimeString()}] ${step}: ${message}`;
+function asBool(v, defaultValue = false) {
+  if (v === undefined || v === null || v === "") return defaultValue;
+  return v === true || v === "true" || v === 1 || v === "1";
 }
 
-async function runFFmpegFastEnhance(inputPath, outputPath, options = {}) {
-  const {
-    upscale = false,
-    targetHeight = 1080,
-    crf = 20,
-    audioBitrate = "192k",
-  } = options;
+async function fetchWithTimeout(url, options = {}, timeoutMs = 180000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  const vf = [];
-
-  // Gentle cleanup / scaling
-  if (upscale) {
-    vf.push(
-      `scale=-2:${targetHeight}:flags=lanczos,unsharp=5:5:0.8:3:3:0.4`
-    );
-  } else {
-    vf.push(`scale='min(1280,iw)':-2:flags=lanczos`);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } finally {
+    clearTimeout(timeout);
   }
+}
 
-  // Mild contrast/saturation polish
-  vf.push("eq=contrast=1.03:saturation=1.05:brightness=0.01");
+async function runFastEnhance(inputPath, outputPath) {
+  const vf = [
+    "scale='min(1280,iw)':-2:flags=lanczos",
+    "eq=contrast=1.03:saturation=1.05:brightness=0.01",
+    "unsharp=5:5:0.8:3:3:0.4",
+  ].join(",");
+
+  const af = [
+    "highpass=f=80",
+    "lowpass=f=12000",
+    "loudnorm",
+  ].join(",");
 
   const args = [
     "-y",
     "-i",
     inputPath,
     "-vf",
-    vf.join(","),
+    vf,
     "-af",
-    "highpass=f=80,lowpass=f=12000,loudnorm",
+    af,
     "-c:v",
     "libx264",
     "-preset",
     "medium",
     "-crf",
-    String(crf),
+    "20",
     "-pix_fmt",
     "yuv420p",
     "-movflags",
@@ -92,139 +103,30 @@ async function runFFmpegFastEnhance(inputPath, outputPath, options = {}) {
     "-c:a",
     "aac",
     "-b:a",
-    audioBitrate,
+    "192k",
     outputPath,
   ];
 
   await execFileAsync("ffmpeg", args);
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 120000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+async function extractAudio(inputPath, outputAudioPath) {
+  const args = [
+    "-y",
+    "-i",
+    inputPath,
+    "-vn",
+    "-acodec",
+    "mp3",
+    "-b:a",
+    "192k",
+    outputAudioPath,
+  ];
 
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    return response;
-  } finally {
-    clearTimeout(timer);
-  }
+  await execFileAsync("ffmpeg", args);
 }
 
-async function callElevenLabsIsolation({ inputPath, apiKey, logs }) {
-  if (!hasValue(apiKey)) {
-    throw new Error("ELEVENLABS_KEY_MISSING");
-  }
-
-  logs.push(buildLog("AI", "Step 1/3 - Voice isolation via ElevenLabs"));
-
-  const fileBuffer = fs.readFileSync(inputPath);
-  const form = new FormData();
-
-  // field names may vary based on your exact ElevenLabs endpoint
-  form.append("file", new Blob([fileBuffer]), path.basename(inputPath));
-
-  const response = await fetchWithTimeout(
-    "https://api.elevenlabs.io/v1/audio-isolation",
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-      },
-      body: form,
-    },
-    180000
-  );
-
-  const contentType = response.headers.get("content-type") || "";
-  const raw = contentType.includes("application/json")
-    ? await response.text()
-    : Buffer.from(await response.arrayBuffer());
-
-  if (!response.ok) {
-    const detail =
-      typeof raw === "string" ? raw : `binary response (${raw.length} bytes)`;
-    throw new Error(`ELEVENLABS_FAILED_${response.status}: ${detail}`);
-  }
-
-  const isolatedAudioPath = makeTempFile(".mp3");
-  fs.writeFileSync(isolatedAudioPath, Buffer.from(raw));
-  return isolatedAudioPath;
-}
-
-async function callFalUpscale({ inputPath, apiKey, model, logs }) {
-  if (!hasValue(apiKey)) {
-    throw new Error("FAL_KEY_MISSING");
-  }
-
-  if (!hasValue(model)) {
-    throw new Error("FAL_MODEL_MISSING");
-  }
-
-  logs.push(buildLog("AI", `Step 2/3 - Video upscaling via fal (${model})`));
-
-  // IMPORTANT:
-  // Replace this block with the exact fal endpoint / SDK flow you use.
-  // This example shows safe auth/error handling and clear diagnostics.
-  const fileBuffer = fs.readFileSync(inputPath);
-  const base64Video = fileBuffer.toString("base64");
-
-  const response = await fetchWithTimeout(
-    `https://fal.run/${model}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Key ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        video_url: null,
-        video_base64: base64Video,
-      }),
-    },
-    300000
-  );
-
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`FAL_FAILED_${response.status}: ${text}`);
-  }
-
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`FAL_BAD_JSON: ${text}`);
-  }
-
-  // Adjust this according to your fal response structure
-  const outputUrl =
-    json.video?.url || json.output?.url || json.url || json.data?.url;
-
-  if (!outputUrl) {
-    throw new Error(`FAL_NO_OUTPUT_URL: ${text}`);
-  }
-
-  const downloadRes = await fetchWithTimeout(outputUrl, {}, 300000);
-  if (!downloadRes.ok) {
-    const body = await downloadRes.text();
-    throw new Error(`FAL_DOWNLOAD_FAILED_${downloadRes.status}: ${body}`);
-  }
-
-  const outputBuffer = Buffer.from(await downloadRes.arrayBuffer());
-  const upscaledPath = makeTempFile(".mp4");
-  fs.writeFileSync(upscaledPath, outputBuffer);
-
-  return upscaledPath;
-}
-
-async function muxVideoWithAudio(videoPath, audioPath, outputPath, logs) {
-  logs.push(buildLog("AI", "Step 3/3 - Final mux and encode via FFmpeg"));
-
+async function replaceVideoAudio(videoPath, audioPath, outputPath) {
   const args = [
     "-y",
     "-i",
@@ -250,14 +152,124 @@ async function muxVideoWithAudio(videoPath, audioPath, outputPath, logs) {
   await execFileAsync("ffmpeg", args);
 }
 
-function classifyProviderError(message = "") {
+async function callElevenLabsIsolation({ inputPath, apiKey, logs }) {
+  if (!hasValue(apiKey)) {
+    throw new Error("ELEVENLABS_KEY_MISSING");
+  }
+
+  logs.push(logLine("AI", "Step 1/3: Voice isolation via ElevenLabs."));
+
+  const audioInputPath = tempFile(".mp3");
+  const isolatedOutputPath = tempFile(".mp3");
+
+  try {
+    await extractAudio(inputPath, audioInputPath);
+
+    const audioBuffer = fs.readFileSync(audioInputPath);
+    const form = new FormData();
+    form.append("file", new Blob([audioBuffer]), "audio.mp3");
+
+    const res = await fetchWithTimeout(
+      "https://api.elevenlabs.io/v1/audio-isolation",
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+        },
+        body: form,
+      },
+      240000
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`ELEVENLABS_FAILED_${res.status}: ${text}`);
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    fs.writeFileSync(isolatedOutputPath, Buffer.from(arrayBuffer));
+
+    return isolatedOutputPath;
+  } finally {
+    safeUnlink(audioInputPath);
+  }
+}
+
+async function callFalUpscale({ inputPath, apiKey, model, logs }) {
+  if (!hasValue(apiKey)) {
+    throw new Error("FAL_KEY_MISSING");
+  }
+
+  if (!hasValue(model)) {
+    throw new Error("FAL_MODEL_MISSING");
+  }
+
+  logs.push(logLine("AI", `Step 2/3: Video upscaling via fal (${model}).`));
+
+  const fileBuffer = fs.readFileSync(inputPath);
+  const base64Video = fileBuffer.toString("base64");
+
+  const res = await fetchWithTimeout(
+    `https://fal.run/${model}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Key ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        video_base64: base64Video,
+      }),
+    },
+    300000
+  );
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`FAL_FAILED_${res.status}: ${text}`);
+  }
+
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`FAL_BAD_JSON: ${text}`);
+  }
+
+  const outputUrl =
+    json.video?.url ||
+    json.output?.url ||
+    json.url ||
+    json.data?.url ||
+    null;
+
+  if (!outputUrl) {
+    throw new Error(`FAL_NO_OUTPUT_URL: ${text}`);
+  }
+
+  const downloadRes = await fetchWithTimeout(outputUrl, {}, 300000);
+
+  if (!downloadRes.ok) {
+    const body = await downloadRes.text();
+    throw new Error(`FAL_DOWNLOAD_FAILED_${downloadRes.status}: ${body}`);
+  }
+
+  const upscaledPath = tempFile(".mp4");
+  const buffer = Buffer.from(await downloadRes.arrayBuffer());
+  fs.writeFileSync(upscaledPath, buffer);
+
+  return upscaledPath;
+}
+
+function classifyError(message = "") {
   const m = String(message).toLowerCase();
 
   if (
+    m.includes("401") ||
+    m.includes("403") ||
     m.includes("forbidden") ||
-    m.includes("_403") ||
     m.includes("unauthorized") ||
-    m.includes("_401") ||
     m.includes("invalid api key") ||
     m.includes("access denied") ||
     m.includes("insufficient")
@@ -267,12 +279,12 @@ function classifyProviderError(message = "") {
 
   if (
     m.includes("model") &&
-    (m.includes("missing") || m.includes("not found") || m.includes("invalid"))
+    (m.includes("missing") || m.includes("invalid") || m.includes("not found"))
   ) {
     return "model";
   }
 
-  if (m.includes("timeout") || m.includes("abort")) {
+  if (m.includes("abort") || m.includes("timeout")) {
     return "timeout";
   }
 
@@ -287,12 +299,20 @@ async function runAIPipelineWithFallback({
   falModel,
   logs,
 }) {
-  const canUseAI =
+  const aiReady =
     hasValue(elevenLabsKey) && hasValue(falKey) && hasValue(falModel);
 
-  if (!canUseAI) {
-    logs.push(buildLog("INFO", "AI keys/model not complete. Running Fast Mode."));
-    await runFFmpegFastEnhance(inputPath, outputPath, { upscale: true });
+  if (!aiReady) {
+    logs.push(
+      logLine(
+        "INFO",
+        "AI credentials or model missing. Switching to Fast Mode."
+      )
+    );
+
+    await runFastEnhance(inputPath, outputPath);
+
+    logs.push(logLine("SUCCESS", "Fast enhancement completed."));
     return {
       modeUsed: "fast",
       fallbackUsed: true,
@@ -304,7 +324,7 @@ async function runAIPipelineWithFallback({
   let upscaledVideoPath = null;
 
   try {
-    logs.push(buildLog("INFO", "Starting AI enhancement pipeline."));
+    logs.push(logLine("INFO", "Starting AI enhancement."));
 
     isolatedAudioPath = await callElevenLabsIsolation({
       inputPath,
@@ -319,38 +339,35 @@ async function runAIPipelineWithFallback({
       logs,
     });
 
-    await muxVideoWithAudio(
-      upscaledVideoPath,
-      isolatedAudioPath,
-      outputPath,
-      logs
-    );
+    logs.push(logLine("AI", "Step 3/3: Final mux and encode via FFmpeg."));
+    await replaceVideoAudio(upscaledVideoPath, isolatedAudioPath, outputPath);
 
-    logs.push(buildLog("SUCCESS", "AI enhancement completed successfully."));
+    logs.push(logLine("SUCCESS", "AI enhancement completed successfully."));
+
     return {
       modeUsed: "ai",
       fallbackUsed: false,
       fallbackReason: null,
     };
   } catch (err) {
-    const reasonType = classifyProviderError(err.message);
+    const type = classifyError(err.message);
 
-    logs.push(buildLog("WARN", `AI enhancement failed: ${err.message}`));
-    logs.push(buildLog("INFO", "Falling back to Fast Mode (FFmpeg only)."));
+    logs.push(logLine("WARN", `AI enhancement failed: ${err.message}`));
+    logs.push(logLine("INFO", "Falling back to Fast Mode."));
 
-    await runFFmpegFastEnhance(inputPath, outputPath, { upscale: true });
+    await runFastEnhance(inputPath, outputPath);
 
-    logs.push(buildLog("SUCCESS", "Fast Mode completed after AI fallback."));
+    logs.push(logLine("SUCCESS", "Fast enhancement completed after fallback."));
 
     return {
       modeUsed: "fast",
       fallbackUsed: true,
       fallbackReason:
-        reasonType === "auth"
-          ? "AI provider authentication or access issue."
-          : reasonType === "model"
+        type === "auth"
+          ? "Authentication or provider access issue."
+          : type === "model"
           ? "Selected fal model is invalid or unavailable."
-          : reasonType === "timeout"
+          : type === "timeout"
           ? "AI provider timeout."
           : "AI provider error.",
     };
@@ -361,7 +378,10 @@ async function runAIPipelineWithFallback({
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "video-enhancer" });
+  res.json({
+    ok: true,
+    service: "video-enhancer",
+  });
 });
 
 app.post("/api/enhance", upload.single("video"), async (req, res) => {
@@ -379,21 +399,19 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
     }
 
     inputPath = req.file.path;
-    outputPath = makeTempFile(".mp4");
+    outputPath = tempFile(".mp4");
 
-    const requestedMode = (req.body.mode || "fast").toLowerCase();
+    const mode = (req.body.mode || "fast").toLowerCase();
     const elevenLabsKey = req.body.elevenLabsKey || "";
     const falKey = req.body.falKey || "";
     const falModel = req.body.falModel || "";
-    const allowAIFallback = normalizeBool(
-      req.body.allowAIFallback !== undefined ? req.body.allowAIFallback : true
-    );
+    const allowAIFallback = asBool(req.body.allowAIFallback, true);
 
-    logs.push(buildLog("INFO", `Requested mode: ${requestedMode}`));
+    logs.push(logLine("INFO", `Requested mode: ${mode}.`));
 
     let result;
 
-    if (requestedMode === "ai") {
+    if (mode === "ai") {
       if (allowAIFallback) {
         result = await runAIPipelineWithFallback({
           inputPath,
@@ -404,20 +422,50 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
           logs,
         });
       } else {
-        logs.push(buildLog("INFO", "AI-only mode enabled. No fallback allowed."));
-        await runAIPipelineWithFallback({
-          inputPath,
-          outputPath,
-          elevenLabsKey,
-          falKey,
-          falModel,
-          logs,
-        });
+        logs.push(logLine("INFO", "AI-only mode enabled. No fallback allowed."));
+
+        let isolatedAudioPath = null;
+        let upscaledVideoPath = null;
+
+        try {
+          logs.push(logLine("INFO", "Starting AI enhancement."));
+
+          isolatedAudioPath = await callElevenLabsIsolation({
+            inputPath,
+            apiKey: elevenLabsKey,
+            logs,
+          });
+
+          upscaledVideoPath = await callFalUpscale({
+            inputPath,
+            apiKey: falKey,
+            model: falModel,
+            logs,
+          });
+
+          logs.push(logLine("AI", "Step 3/3: Final mux and encode via FFmpeg."));
+          await replaceVideoAudio(
+            upscaledVideoPath,
+            isolatedAudioPath,
+            outputPath
+          );
+
+          logs.push(logLine("SUCCESS", "AI enhancement completed successfully."));
+
+          result = {
+            modeUsed: "ai",
+            fallbackUsed: false,
+            fallbackReason: null,
+          };
+        } finally {
+          safeUnlink(isolatedAudioPath);
+          safeUnlink(upscaledVideoPath);
+        }
       }
     } else {
-      logs.push(buildLog("INFO", "Running Fast Mode."));
-      await runFFmpegFastEnhance(inputPath, outputPath, { upscale: true });
-      logs.push(buildLog("SUCCESS", "Fast enhancement completed successfully."));
+      logs.push(logLine("INFO", "Running Fast Mode."));
+      await runFastEnhance(inputPath, outputPath);
+      logs.push(logLine("SUCCESS", "Fast enhancement completed."));
       result = {
         modeUsed: "fast",
         fallbackUsed: false,
@@ -434,19 +482,21 @@ app.post("/api/enhance", upload.single("video"), async (req, res) => {
     );
     res.setHeader("X-Enhancement-Mode", result.modeUsed);
     res.setHeader("X-Fallback-Used", String(result.fallbackUsed));
+
     if (result.fallbackReason) {
       res.setHeader(
         "X-Fallback-Reason",
         encodeURIComponent(result.fallbackReason)
       );
     }
+
     res.setHeader("X-Logs", encodeURIComponent(JSON.stringify(logs)));
 
     return res.status(200).send(finalBuffer);
   } catch (err) {
     console.error("Enhancement route error:", err);
 
-    logs.push(buildLog("ERROR", err.message || "Unknown server error"));
+    logs.push(logLine("ERROR", err.message || "Unknown server error."));
 
     return res.status(500).json({
       ok: false,
